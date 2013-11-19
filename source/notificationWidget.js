@@ -1,12 +1,13 @@
 'use strict';
 
-// Declare module which depends on filters, and services
+//Declare module which depends on filters, and services
 angular.module('notificationWidget', [])
 // Declare an http interceptor that will signal the start and end of each request
 .config(['$httpProvider', function ($httpProvider) {
-    var $http,
+    var $http = undefined,
         interceptor = ['$q', '$injector', function ($q, $injector) {
-            var notificationChannel;
+            var notificationChannel = undefined;
+            var loadingWidgetOverride = undefined;
 
             function success(response) {
                 // get $http via $injector because of circular dependency problem
@@ -37,10 +38,15 @@ angular.module('notificationWidget', [])
             return function (promise) {
                 // get requestNotificationChannel via $injector because of circular dependency problem
                 notificationChannel = notificationChannel || $injector.get('requestNotificationChannel');
-                // send a notification requests are complete
-                notificationChannel.requestStarted();
+                // get loadingWidgetOverride via $injector because of circular dependency problem
+                loadingWidgetOverride = loadingWidgetOverride || $injector.get('loadingWidgetOverride');
+                // send a notification requests are complete only if we have not received a request to cancel
+                if (!loadingWidgetOverride.getCancelNextRequestNotification()) {
+                  notificationChannel.requestStarted();
+                }
+
                 return promise.then(success, error);
-            }
+            };
         }];
 
     $httpProvider.responseInterceptors.push(interceptor);
@@ -102,4 +108,24 @@ angular.module('notificationWidget', [])
             requestNotificationChannel.onRequestEnded(scope, endRequestHandler);
         }
     };
-}]);
+}])
+// Added extra service to communicate with interceptor and tell it to cancel the loading widget on the next request
+.service('loadingWidgetOverride', function() {
+  var overrideCount = 0;
+
+  return {
+    cancelNextRequestNotification : function () {
+      overrideCount++;
+    },
+
+    getCancelNextRequestNotification : function () {
+      if (overrideCount > 0) {
+        overrideCount--;
+        return true;
+      }
+      else {
+        return false;
+      }
+    } 
+  };
+});
